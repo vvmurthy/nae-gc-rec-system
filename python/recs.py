@@ -109,7 +109,7 @@ class Recsystem:
         self.base = BASE
 
         # Define word tokenizer
-        self.nlp = spacy.load('en')
+        self.nlp = spacy.load('en_core_web_lg')
 
         # Define static values of dataset
         self.grade_range = 7  # grades 3 - 9 inclusive

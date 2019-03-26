@@ -33,7 +33,7 @@ def get_question():
     user_id = request.args.get('user')
     q, a, b, c, d = rc.send_question()
 
-    print user_id
+    print(user_id)
 
     return json.dumps({
         'question': q,
@@ -59,11 +59,20 @@ def post_answer():
 
     # letter corresponding to selected answer (e.g. A, B, C)
     selected = request.args.get('selected')
+    print(selected)
     rc.prep_next_q(selected)
 
     return json.dumps({
         'correct': selected
     })
+
+# TODO
+# ADD the picture questions
+# Reduce POST Time (MAJOR)
+# GET -> Types of Exams
+# POST -> exam type, Grade Level, Keywords (or load from firebase created)
+# GET -> Correct answer
+# Add ID to each of the questions
 
 
 if __name__ == '__main__':
