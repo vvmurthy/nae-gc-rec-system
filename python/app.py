@@ -26,6 +26,25 @@ def show_index():
 def show_file(path):
     return send_file(WWW_BASE + '/' + path)
 
+@app.route('/api/tests', methods=["GET"])
+def get_tests():
+    return json.dumps({
+        "tests":rc.all_test_types
+    })
+
+@app.route('/api/keywords', methods=["GET"])
+def get_keywords():
+    exam = request.args.get("exam")
+    grade = request.args.get("grade")
+    keywords = rc.get_keywords(exam ,grade)
+    found_answers = "yes"
+    if len(keywords) == 0:
+        found_answers = "no"
+    return json.dumps({
+        "keywords" : keywords,
+        "found_answers" : found_answers
+    })
+
 
 @app.route('/api/question', methods=['GET'])
 def get_question():
@@ -67,8 +86,6 @@ def post_answer():
     })
 
 # TODO
-# ADD the picture questions
-# Reduce POST Time (MAJOR)
 # GET -> Types of Exams
 # POST -> exam type, Grade Level, Keywords (or load from firebase created)
 # GET -> Correct answer

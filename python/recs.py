@@ -3,6 +3,9 @@ import numpy as np
 import sqlite3
 import spacy
 
+import logging
+logging.basicConfig(level=logging.INFO)
+
 
 class Recsystem:
 
@@ -128,9 +131,28 @@ class Recsystem:
         self.c = self.conn.cursor()
         self.c.execute("SELECT count(*) FROM sqlite_master WHERE type='table'")
         tables = self.c.fetchall()[0][0]
+
+        # Add questions to database
+        logging.info("Number of tables: " + str(tables))
         if tables < 2:
-            self.df = self._preprocess_data()
+            self._preprocess_data()
         self.df = pd.read_sql('SELECT * FROM questions;', self.conn)
+        
+        # Add keywords to database
+        
+        if tables < 3:
+            try:
+                logging.info("Creating Keywords Table")
+                create_table_sql = "CREATE TABLE IF NOT EXISTS keywords ( \
+                                    id integer PRIMARY KEY, \
+                                    examName text NOT NULL, \
+                                    grade integer NOT NULL, question text NOT NULL, keyword text NOT NULL \
+                                );"
+                self.c.execute(create_table_sql)
+                self.df.apply(lambda row: self._init_keywords(row), axis=1)
+            except Exception as e:
+                logging.warn(e)
+                logging.warn("Could not add table to sql")
 
         # Define question and response
         self.last_question = ""
@@ -154,7 +176,7 @@ class Recsystem:
         # Define temporary variable index- which question currently being answered
         # index is initially a random question that the user has not answered
         self.index = None
-
+        self.conn.commit()
         self.conn.close()
 
     def init_user(self, username):
@@ -182,6 +204,39 @@ class Recsystem:
         self._update_by_index()
 
         self.conn.close()
+    
+    def _init_keywords(self, df_row):
+        exam = df_row["examName"]
+        grade = df_row["schoolGrade"]
+        question = df_row["question"]
+
+        sql = "INSERT INTO tasks(examName, grade, question, keyword) \
+              VALUES(?,?,?, ?)"
+
+        q1 = self.nlp(question)
+        words = set()
+        for word in q1:
+            if word.pos_ == 'NOUN':
+                words.add(word)
+
+        for word in words:
+            self.c.execute(sql, (exam, grade, question, word.text))
+        
+    
+    def get_keywords(self, exam, grade):
+        sql = "SELECT keyword from tasks where examName=(?) and grade=(?)"
+        self.conn = sqlite3.connect('recs.db')
+        self.c = self.conn.cursor()
+        self.c.execute(sql, (exam, grade))
+        response = self.c.fetchall()
+        keywords = set()
+        for re in response:
+            keyword = re[0].lower()
+            if "\\" in keyword or len(keyword) == 1:
+                continue            
+            keywords.add(keyword)
+        keywords = list(keywords)
+        return keywords
 
     def _preprocess_data(self):
 
@@ -264,6 +319,9 @@ class Recsystem:
 
         return pd.Series({"questionID": id, "question":qs, "A": A, "B": B, "C":C, "D":D})
 
+
+
+
     # 3)) We create toy distributions of student responses by grade
     def _correct(self, q_grade, id):
         grade = int(q_grade)
@@ -312,27 +370,36 @@ class Recsystem:
         difference_score = difference_last + difference_percent + difference_score
 
         # compare last question by token sort ratio
-        q1 = self.nlp(self.last_question)
-        q2 = self.nlp(row['question'])
-        word_list_1 = []
-        word_list_2 = []
-        for word in q1:
-            if word.pos_ == 'NOUN':
-                word_list_1.append(word.text)
+        # For (small amounts of) optimization
+        # We arbitrarily fail 75% of the questions
+        # This should make it more random as well
+        if np.random.randint(0, 4) == 0:
+            q1 = self.nlp(self.last_question)
+            q2 = self.nlp(row['question'])
+            word_list_1 = []
+            word_list_2 = []
+            for word in q1:
+                if word.pos_ == 'NOUN':
+                    word_list_1.append(word.text)
 
-        for word in q2:
-            if word.pos_ == 'NOUN':
-                word_list_2.append(word.text)
+            for word in q2:
+                if word.pos_ == 'NOUN':
+                    word_list_2.append(word.text)
 
-        tokenized_q1 = " ".join(sorted(word_list_1))
-        tokenized_q2 = " ".join(sorted(word_list_2))
+            if len(word_list_1) == 0 or len(word_list_2) == 0:
+                sim = 0
+            else:
+                tokenized_q1 = " ".join(sorted(word_list_1))
+                tokenized_q2 = " ".join(sorted(word_list_2))
 
-        tk_q1 = self.nlp(tokenized_q1)
+                tk_q1 = self.nlp(tokenized_q1)
 
-        # TypeError occurs if sentence has no nouns
-        try:
-            sim = tk_q1.similarity(self.nlp(tokenized_q2))
-        except TypeError:
+                # TypeError occurs if sentence has no nouns
+                try:
+                    sim = tk_q1.similarity(self.nlp(tokenized_q2))
+                except TypeError:
+                    sim = 0
+        else:
             sim = 0
 
         difference_q = 1 - sim
@@ -358,10 +425,12 @@ class Recsystem:
     def prep_next_q(self, answer):
 
         self._updates(answer)
+        logging.info("Finish updates")
 
         # Get similarity
         self.df['similarity'] = self.df.apply(lambda row: self._match_profile(row), axis=1)
         self.df = self.df.sort_values('similarity')
+        logging.info("Finished similarity")
 
         # Find question based on similarity
         found_q = False
@@ -371,10 +440,12 @@ class Recsystem:
                 found_q = True
                 self.index = n
             n += 1
+        logging.info("Found Question")
 
         # Update class and db information
         self._update_by_index()
         self._update_sql()
+        logging.info("Saved Next Question")
 
     # 7)) We update student  / db statistics based on answered question
     def _updates(self, answer):
