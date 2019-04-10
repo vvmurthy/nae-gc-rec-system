@@ -45,6 +45,12 @@ def get_keywords():
         "found_answers" : found_answers
     })
 
+@app.route('/api/list', methods=["GET"])
+def get_questions_by_keywords():
+    return json.dumps({
+    "questions":["sdf"]
+    })
+
 
 @app.route('/api/question', methods=['GET'])
 def get_question():

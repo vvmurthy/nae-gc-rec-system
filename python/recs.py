@@ -103,6 +103,9 @@ class Recsystem:
     users : sql table
         Contains user variable info for each user. Some sections are mutable, unlike
         `questions` which is generally immutable
+    
+    keywords : sql table
+        Links questions against specific "keywords" for faster indexing. 
 
     """
 
@@ -134,6 +137,27 @@ class Recsystem:
 
         # Add questions to database
         logging.info("Number of tables: " + str(tables))
+        if tables < 1:
+            try:
+                logging.info("Creating Users Table")
+                create_table_sql = "CREATE TABLE IF NOT EXISTS users ( \
+                                    id integer PRIMARY KEY, \
+                                    qs_answered int not null, \
+                                    username text not null, \
+                                    percentage long not null, \
+                                    answered_questions text not null, \
+                                    grade integer not null, \
+                                    test_type text not null \
+                                );"
+                self.c.execute(create_table_sql)
+                create_user_sql = "INSERT into users (username, grade \
+                    , percentage, answered_questions, qs_answered, test_type \
+                        ) values (\"ttrojan77\", 3, 0, \"[]\", 0, \"MCAS\");"
+                self.c.execute(create_user_sql)
+            except Exception as e:
+                logging.warn(e)
+                logging.warn("Could not add users table to sql")
+
         if tables < 2:
             self._preprocess_data()
         self.df = pd.read_sql('SELECT * FROM questions;', self.conn)
@@ -152,7 +176,7 @@ class Recsystem:
                 self.df.apply(lambda row: self._init_keywords(row), axis=1)
             except Exception as e:
                 logging.warn(e)
-                logging.warn("Could not add table to sql")
+                logging.warn("Could not add keywords table to sql")
 
         # Define question and response
         self.last_question = ""
@@ -210,7 +234,7 @@ class Recsystem:
         grade = df_row["schoolGrade"]
         question = df_row["question"]
 
-        sql = "INSERT INTO tasks(examName, grade, question, keyword) \
+        sql = "INSERT INTO keywords (examName, grade, question, keyword) \
               VALUES(?,?,?, ?)"
 
         q1 = self.nlp(question)
@@ -224,7 +248,7 @@ class Recsystem:
         
     
     def get_keywords(self, exam, grade):
-        sql = "SELECT keyword from tasks where examName=(?) and grade=(?)"
+        sql = "SELECT keyword from keywords where examName=(?) and grade=(?)"
         self.conn = sqlite3.connect('recs.db')
         self.c = self.conn.cursor()
         self.c.execute(sql, (exam, grade))
@@ -241,13 +265,13 @@ class Recsystem:
     def _preprocess_data(self):
 
         # Read CSVs from dataset
-        df1 = pd.read_csv(self.base + '/ElementarySchool/Elementary-NDMC-Train.csv')
-        df2 = pd.read_csv(self.base + '/ElementarySchool/Elementary-NDMC-Test.csv')
-        df3 = pd.read_csv(self.base + '/ElementarySchool/Elementary-NDMC-Dev.csv')
+        df1 = pd.read_csv(self.base + '/data/Qs/ElementarySchool/Elementary-NDMC-Train.csv')
+        df2 = pd.read_csv(self.base + '/data/Qs/ElementarySchool/Elementary-NDMC-Test.csv')
+        df3 = pd.read_csv(self.base + '/data/Qs/ElementarySchool/Elementary-NDMC-Dev.csv')
 
-        df4 = pd.read_csv(self.base + '/MiddleSchool/Middle-NDMC-Train.csv')
-        df5 = pd.read_csv(self.base + '/MiddleSchool/Middle-NDMC-Test.csv')
-        df6 = pd.read_csv(self.base + '/MiddleSchool/Middle-NDMC-Dev.csv')
+        df4 = pd.read_csv(self.base + '/data/Qs/MiddleSchool/Middle-NDMC-Train.csv')
+        df5 = pd.read_csv(self.base + '/data/Qs/MiddleSchool/Middle-NDMC-Test.csv')
+        df6 = pd.read_csv(self.base + '/data/Qs/MiddleSchool/Middle-NDMC-Dev.csv')
 
         df = pd.concat([df1, df2, df3, df4, df5, df6])
         del df['subject']
@@ -270,20 +294,19 @@ class Recsystem:
         del df['question']
         df = df.merge(df7)
 
-
         # 3)) We create a toy distribution for each question based on the grade the question was assigned
         dist_df = df.apply(lambda row: self._correct(row['schoolGrade'], row['questionID']), axis=1)
         df = df.merge(dist_df)
-        df['questionID'] = df['questionID'].str.decode('utf-8')
-        df['originalQuestionID'] = df['originalQuestionID'].str.decode('utf-8')
-        df['AnswerKey'] = df['AnswerKey'].str.decode('utf-8')
-        df['examName'] = df['examName'].str.decode('utf-8')
-        df['year'] = df['year'].str.decode('utf-8')
-        df['question'] = df['question'].str.decode('utf-8')
-        df['A'] = df['A'].str.decode('utf-8')
-        df['B'] = df['B'].str.decode('utf-8')
-        df['C'] = df['C'].str.decode('utf-8')
-        df['D'] = df['D'].str.decode('utf-8')
+        df['questionID'] = df['questionID'].astype(str)
+        df['originalQuestionID'] = df['originalQuestionID'].astype(str)
+        df['AnswerKey'] = df['AnswerKey'].astype(str)
+        df['examName'] = df['examName'].astype(str)
+        df['year'] = df['year'].astype(str)
+        df['question'] = df['question'].astype(str)
+        df['A'] = df['A'].astype(str)
+        df['B'] = df['B'].astype(str)
+        df['C'] = df['C'].astype(str)
+        df['D'] = df['D'].astype(str)
 
         df.head()
 
