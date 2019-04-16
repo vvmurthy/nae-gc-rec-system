@@ -170,6 +170,7 @@ class Recsystem:
                 create_table_sql = "CREATE TABLE IF NOT EXISTS keywords ( \
                                     id integer PRIMARY KEY, \
                                     examName text NOT NULL, \
+                                    questionId integer NOT NULL, \
                                     grade integer NOT NULL, question text NOT NULL, keyword text NOT NULL \
                                 );"
                 self.c.execute(create_table_sql)
@@ -202,6 +203,59 @@ class Recsystem:
         self.index = None
         self.conn.commit()
         self.conn.close()
+    
+    def get_question_by_keywords_grade(self, grade, keywords, exam):
+        self.conn = sqlite3.connect('recs.db')
+        questions = []
+        question_ids = set()
+        sql = "SELECT questionID from keywords where examName=(?) and grade=(?) and keyword=(?)"
+        self.c = self.conn.cursor()
+        for keyword in keywords:
+            self.c.execute(sql, (exam, grade, keyword))
+            response = self.c.fetchall()
+            for re in response:
+                question_id = str(re[0])
+                if "\\" in question_id or len(question_id) == 1:
+                    continue            
+                question_ids.add(question_id)
+        self.conn.close()
+        self.conn = sqlite3.connect('recs.db')
+        
+        sql = "SELECT questionID, originalQuestionID, AnswerKey, examName, year, question, A, B, C, D from questions where questionID=(?)"
+        for question_id in question_ids:
+            self.c = self.conn.cursor()
+            self.c.execute(sql, (question_id,))
+            response = self.c.fetchall()
+            for re in response:
+                question_id = re[0].lower()
+                if "\\" in question_id or len(question_id) == 1:
+                    continue  
+                original_id = re[1].lower()
+                answer_key = re[2].lower()
+                exam_name = re[3]
+                year = re[4]
+                question = re[5]
+                a = re[6]
+                b = re[7]
+                c = re[8]
+                d = re[9]
+
+                question_dict = {
+                    "originalID" : original_id,
+                    "answerKey" : answer_key,
+                    "questionID" : question_id,
+                    "examName" : exam_name,
+                    "A" : a,
+                    "B" : b,
+                    "C" : c,
+                    "D" : d,
+                    "question" : question,
+                    "year" : year
+                }
+                questions.append(question_dict)
+
+        self.conn.close()
+        return questions
 
     def init_user(self, username):
         self.conn = sqlite3.connect('recs.db')
@@ -233,9 +287,10 @@ class Recsystem:
         exam = df_row["examName"]
         grade = df_row["schoolGrade"]
         question = df_row["question"]
+        question_id = df_row["questionID"]
 
-        sql = "INSERT INTO keywords (examName, grade, question, keyword) \
-              VALUES(?,?,?, ?)"
+        sql = "INSERT INTO keywords (examName, grade, question, keyword, questionID) \
+              VALUES(?,?,?, ?, ?)"
 
         q1 = self.nlp(question)
         words = set()
@@ -244,7 +299,7 @@ class Recsystem:
                 words.add(word)
 
         for word in words:
-            self.c.execute(sql, (exam, grade, question, word.text))
+            self.c.execute(sql, (exam, grade, question, word.text, question_id))
         
     
     def get_keywords(self, exam, grade):

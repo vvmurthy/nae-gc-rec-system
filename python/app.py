@@ -45,11 +45,17 @@ def get_keywords():
         "found_answers" : found_answers
     })
 
-@app.route('/api/list', methods=["GET"])
+@app.route('/api/list', methods=["POST"])
 def get_questions_by_keywords():
-    return json.dumps({
-    "questions":["sdf"]
-    })
+
+    data = request.data
+    dataDict = json.loads(data)
+
+    keywords = dataDict['keywords']
+    exam = dataDict['exam']
+    grade = dataDict["grade"]
+    return json.dumps({"questions" : 
+    rc.get_question_by_keywords_grade(grade, keywords, exam)})
 
 
 @app.route('/api/question', methods=['GET'])
