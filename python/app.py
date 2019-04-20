@@ -86,7 +86,7 @@ def post_answer():
     keywords = dataDict['keywords']
     exam = dataDict['exam']
     username = dataDict['username']
-    grade = dataDict["grade"])
+    grade = dataDict["grade"]
     answer = dataDict["answer"]
     question_id = dataDict["question_id"]
 

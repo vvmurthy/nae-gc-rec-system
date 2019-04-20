@@ -189,6 +189,7 @@ class Recsystem:
                                     similarity long NOT NULL \
                                 );"
                 self.c.execute(create_table_sql)
+                self.conn.commit()
             except Exception as e:
                 logging.warn(e)
                 logging.warn("Could not add keywords table to sql")
@@ -305,12 +306,12 @@ class Recsystem:
                     similarity = 90.0
                 insert = "INSERT into user_similarity (username, questionId, similarity) VALUES (?, ?, ?)"
                 c.execute(insert, (username, question_id_query, similarity))
+                conn.commit()
 
         else:
-            find_questions_sql = "SELECT (similarity, questionID) from user_simiarity where username=(?)"
-            c.execute(find_questions_sql, (username))
+            find_questions_sql = "SELECT similarity, questionID from user_similarity where username=(?)"
+            c.execute(find_questions_sql, (username,))
             response = c.fetchall()
-            question_id = -1
             similarity = 0
             for re in response:
                 similarity_query = float(re[0])
