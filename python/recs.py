@@ -318,7 +318,7 @@ class Recsystem:
                 question_id_query = str(re[1])
                 if similarity_query > similarity and (question_id_query not in answered_questions):
                     question_id = question_id_query
-                break
+                    break
         conn.close()
         return qs_answered, percentage, test_type, answered_questions, question_id
     
@@ -505,7 +505,7 @@ class Recsystem:
         q_percent = row["Distribution" + str(grade)]
         q_answers = row["Distribution" + str(grade) + "_users"]
         difference_last = abs(q_percent - last_percentage) * percentage_weight
-        difference_percent = abs(q_percent - percentage) * percentage_weight * qs_answered 
+        difference_percent = abs(q_percent - percentage) * percentage_weight 
         difference_score = difference_last + difference_percent + difference_score
 
         # compare last question by token sort ratio
@@ -545,7 +545,7 @@ class Recsystem:
         total_weight = test_weight + question_weight + grade_weight + 2 * percentage_weight
         similarity = 100 - difference_score / float(total_weight)
 
-        assert similarity < 100 and similarity > 0
+        assert similarity < 100 and similarity >= 0
 
         # Update similarity
         conn = sqlite3.connect('recs.db')
