@@ -1,6 +1,7 @@
 import os
 import json
 from flask import Flask, request, send_file
+import sqlite3
 
 from recs import Recsystem
 
@@ -8,14 +9,9 @@ DIR = os.path.abspath('..')
 WWW_BASE = DIR + '/www'
 QS_BASE = DIR + '/data/Qs'
 
-# maybe we could pass these as request parameters eventually
-username = 'ttrojan77'
-
 rc = Recsystem(DIR)
-rc.init_user(username)
 
 app = Flask(__name__)
-
 
 @app.route('/')
 def show_index():
@@ -58,44 +54,45 @@ def get_questions_by_keywords():
     rc.get_question_by_keywords_grade(grade, keywords, exam)})
 
 
-@app.route('/api/question', methods=['GET'])
+@app.route('/api/question', methods=['POST'])
 def get_question():
-    # retrieve user from query string, TODO migrate to using authentication
-    user_id = request.args.get('user')
-    q, a, b, c, d = rc.send_question()
+    
+    # TODO: Use actual authentication
+    data = request.data
+    dataDict = json.loads(data)
 
-    print(user_id)
-
+    keywords = dataDict['keywords']
+    exam = dataDict['exam']
+    username = dataDict['username']
+    grade = dataDict["grade"]
+    qs_answered, percentage, _, _, question_id = rc.init_user_vars(
+        username, grade, exam, keywords
+    )
+    questions = []
+    conn = sqlite3.connect('recs.db')
+    rc.get_question_by_id(question_id, questions, conn)
+    conn.close()
     return json.dumps({
-        'question': q,
-        'answers': [{
-            'id': 'A',
-            'text': a
-        }, {
-            'id': 'B',
-            'text': b
-        }, {
-            'id': 'C',
-            'text': c
-        }, {
-            'id': 'D',
-            'text': d
-        }]
+        'question': questions,
+        "qs_answered" : qs_answered,
+        "percentage" : percentage
     })
-
 
 @app.route('/api/answer', methods=['POST'])
 def post_answer():
-    user_id = request.args.get('user')
+    data = request.data
+    dataDict = json.loads(data)
 
-    # letter corresponding to selected answer (e.g. A, B, C)
-    selected = request.args.get('selected')
-    print(selected)
-    rc.prep_next_q(selected)
+    keywords = dataDict['keywords']
+    exam = dataDict['exam']
+    username = dataDict['username']
+    grade = dataDict["grade"])
+    answer = dataDict["answer"]
+    question_id = dataDict["question_id"]
 
-    return json.dumps({
-        'correct': selected
-    })
+    response = rc.prep_next_q(answer, username, grade, exam, keywords, question_id)
+
+    return json.dumps(response)
 
 # TODO
 # GET -> Types of Exams

@@ -178,25 +178,23 @@ class Recsystem:
             except Exception as e:
                 logging.warn(e)
                 logging.warn("Could not add keywords table to sql")
+        
+        if tables < 4:
+            try:
+                logging.info("Creating user_similarity Table")
+                create_table_sql = "CREATE TABLE IF NOT EXISTS user_similarity ( \
+                                    id integer PRIMARY KEY, \
+                                    username text NOT NULL, \
+                                    questionId integer NOT NULL, \
+                                    similarity long NOT NULL \
+                                );"
+                self.c.execute(create_table_sql)
+            except Exception as e:
+                logging.warn(e)
+                logging.warn("Could not add keywords table to sql")
 
-        # Define question and response
-        self.last_question = ""
-        self.A = ""
-        self.B = ""
-        self.C = ""
-        self.D = ""
-        self.q_grade = -1
-
-        # Define user vars
-        self.last_percentage = 0
-
-        # Define empty user vars
-        self.username = None
-        self.grade = None
-        self.qs_answered = None
-        self.percentage = None
-        self.test_type = None
-        self.answered_questions = None
+        # Clear the dataframe for future operations
+        self.df = None
 
         # Define temporary variable index- which question currently being answered
         # index is initially a random question that the user has not answered
@@ -205,83 +203,123 @@ class Recsystem:
         self.conn.close()
     
     def get_question_by_keywords_grade(self, grade, keywords, exam):
-        self.conn = sqlite3.connect('recs.db')
+        conn = sqlite3.connect('recs.db')
         questions = []
         question_ids = set()
         sql = "SELECT questionID from keywords where examName=(?) and grade=(?) and keyword=(?)"
-        self.c = self.conn.cursor()
+        c = conn.cursor()
         for keyword in keywords:
-            self.c.execute(sql, (exam, grade, keyword))
-            response = self.c.fetchall()
+            c.execute(sql, (exam, grade, keyword))
+            response = c.fetchall()
             for re in response:
                 question_id = str(re[0])
                 if "\\" in question_id or len(question_id) == 1:
                     continue            
                 question_ids.add(question_id)
-        self.conn.close()
-        self.conn = sqlite3.connect('recs.db')
+        conn.close()
+        conn = sqlite3.connect('recs.db')
         
-        sql = "SELECT questionID, originalQuestionID, AnswerKey, examName, year, question, A, B, C, D from questions where questionID=(?)"
         for question_id in question_ids:
-            self.c = self.conn.cursor()
-            self.c.execute(sql, (question_id,))
-            response = self.c.fetchall()
-            for re in response:
-                question_id = re[0].lower()
-                if "\\" in question_id or len(question_id) == 1:
-                    continue  
-                original_id = re[1].lower()
-                answer_key = re[2].lower()
-                exam_name = re[3]
-                year = re[4]
-                question = re[5]
-                a = re[6]
-                b = re[7]
-                c = re[8]
-                d = re[9]
-
-                question_dict = {
-                    "originalID" : original_id,
-                    "answerKey" : answer_key,
-                    "questionID" : question_id,
-                    "examName" : exam_name,
-                    "A" : a,
-                    "B" : b,
-                    "C" : c,
-                    "D" : d,
-                    "question" : question,
-                    "year" : year
-                }
-                questions.append(question_dict)
-
-        self.conn.close()
+            self.get_question_by_id(question_id, questions, conn)
+        conn.close()
         return questions
+    
+    def get_question_by_id(self, question_id, questions, conn):
+        c = conn.cursor()
+        sql = "SELECT questionID, originalQuestionID, AnswerKey, examName, year, question, A, B, C, D from questions where questionID=(?)"
+        c.execute(sql, (question_id,))
+        response = c.fetchall()
+        for re in response:
+            question_id = re[0]
+            if "\\" in question_id or len(question_id) == 1:
+                return  
+            original_id = re[1]
+            answer_key = re[2].lower()
+            exam_name = re[3]
+            year = re[4]
+            question = re[5]
+            a = re[6]
+            b = re[7]
+            c = re[8]
+            d = re[9]
 
-    def init_user(self, username):
-        self.conn = sqlite3.connect('recs.db')
-        self.c = self.conn.cursor()
-        self.username = username
+            question_dict = {
+                "originalID" : original_id,
+                "answerKey" : answer_key,
+                "questionID" : question_id,
+                "examName" : exam_name,
+                "A" : a,
+                "B" : b,
+                "C" : c,
+                "D" : d,
+                "question" : question,
+                "year" : year
+            }
+            questions.append(question_dict)
+
+
+    def init_user_vars(self, username, grade, exam, keywords):
+        conn = sqlite3.connect('recs.db')
+        c = conn.cursor()
         try:
-            user = pd.read_sql('SELECT * FROM users WHERE username=' + '"' + self.username + '";', self.conn)
-        except pd.io.sql.DatabaseError:
-            raise ValueError("Username NOT found")
+            user = pd.read_sql('SELECT * FROM users WHERE username=' + '"' + username + '";', conn)
+            qs_answered = int(user['qs_answered'][0])
+        except IndexError:
+            create_user_sql = "INSERT into users (username, grade \
+                    , percentage, answered_questions, qs_answered, test_type \
+                        ) values (\"" + username  + "\", " + grade + \
+                            ", 0, \"[]\", 0, \"" + exam + "\");"
+            c.execute(create_user_sql)
+            conn.commit()
+            user = pd.read_sql('SELECT * FROM users WHERE username=' + '"' + username + '";', conn)
 
         # Define user variables
-        self.grade = int(user['grade'][0])
-        self.qs_answered = int(user['qs_answered'][0])
-        self.percentage = float(user['percentage'][0])
-        self.test_type = user['test_type'][0]
+        qs_answered = int(user['qs_answered'][0])
+        percentage = float(user['percentage'][0])
+        test_type = user['test_type'][0]
+        
         if user['answered_questions'][0] == '[]':
-            self.answered_questions = []
+            answered_questions = []
         else:
-            self.answered_questions = user['answered_questions'][0].split('____')
+            answered_questions = user['answered_questions'][0].split('____')
+        
+        # Seed the last question if the user hasn't answered any
+        question_id = None
+        if len(answered_questions) == 0:
+            for keyword in keywords:
+                find_questions_sql = "SELECT questionID from keywords where keyword=(?) and grade=(?)"
+                c.execute(find_questions_sql, (keyword, grade))
+                response = c.fetchall()
+                for re in response:
+                    question_id = str(re[0])
+                    break
+            
+            # Send the similarity to db
+            find_all_questions = "SELECT questionId from questions"
+            c.execute(find_all_questions)
+            response = c.fetchall()
+            for re in response:
+                question_id_query = re[0]
+                similarity = 0.0
+                if question_id_query == question_id:
+                    similarity = 90.0
+                insert = "INSERT into user_similarity (username, questionId, similarity) VALUES (?, ?, ?)"
+                c.execute(insert, (username, question_id_query, similarity))
 
-        self.index = np.random.randint(0, self.df.shape[0])
-        while self.df.iloc[[self.index]]['question']._values[0] in self.answered_questions:
-            self.index = np.random.randint(0, self.df.shape[0])
-        self._update_by_index()
-
-        self.conn.close()
+        else:
+            find_questions_sql = "SELECT (similarity, questionID) from user_simiarity where username=(?)"
+            c.execute(find_questions_sql, (username))
+            response = c.fetchall()
+            question_id = -1
+            similarity = 0
+            for re in response:
+                similarity_query = float(re[0])
+                question_id_query = str(re[1])
+                if similarity_query > similarity and (question_id_query not in answered_questions):
+                    question_id = question_id_query
+                break
+        conn.close()
+        return qs_answered, percentage, test_type, answered_questions, question_id
     
     def _init_keywords(self, df_row):
         exam = df_row["examName"]
@@ -396,10 +434,7 @@ class Recsystem:
             D = "D. " + D.strip()
 
         return pd.Series({"questionID": id, "question":qs, "A": A, "B": B, "C":C, "D":D})
-
-
-
-
+        
     # 3)) We create toy distributions of student responses by grade
     def _correct(self, q_grade, id):
         grade = int(q_grade)
@@ -422,13 +457,38 @@ class Recsystem:
         series = {}
 
         for n in range(0, self.grade_range):
-            series[str(n + self.min_grade)] = distribution[n]
-            series[str(n + self.min_grade) + '_users'] = qs_answered[n]
+            series["Distribution" + str(n + self.min_grade)] = distribution[n]
+            series["Distribution" + str(n + self.min_grade) + '_users'] = qs_answered[n]
         series['questionID'] = id
 
         return pd.Series(series)
 
-    def _match_profile(self, row):
+    def _similarity_of_id(self, question_id):
+        conn = sqlite3.connect('recs.db')
+        c = conn.cursor()
+        select = "SELECT question from questions where questionID=(?)"
+        c.execute(select, (question_id,))
+        response = c.fetchall()
+        for re in response:
+            last_question = re[0]
+            break
+        conn.close()
+        
+        q1 = self.nlp(last_question)
+        word_list_1 = []
+        for word in q1:
+                if word.pos_ == 'NOUN':
+                    word_list_1.append(word.text)
+        tokenized_q1 = " ".join(sorted(word_list_1))
+        if len(word_list_1) == 0:
+            return None
+        tk_q1 = self.nlp(tokenized_q1)
+        return tk_q1
+
+    def _match_profile(self, row, username, exam, grade, last_percentage, 
+        percentage, qs_answered, tk_q1):
+
+        grade = int(grade)
 
         # we scale each individual score to be out of 100
         difference_score = 0.0
@@ -436,15 +496,15 @@ class Recsystem:
         # Compare grade
         grade_weight = 1
         q_grade = int(row['schoolGrade'])
-        diff = q_grade - self.grade
-        difference_score += (6 - diff) / float(6) * grade_weight
+        diff = q_grade - grade
+        difference_score += (100 * (diff) / float(6)) * grade_weight
 
         # Compare percentage
         percentage_weight = 1
-        q_percent = row[str(self.grade)]
-        q_answers = row[str(self.grade) + "_users"]
-        difference_last = 1 - abs(q_percent - self.last_percentage) * percentage_weight / float(100)
-        difference_percent = 1 - abs(q_percent - self.percentage) * percentage_weight * self.qs_answered / float(100)
+        q_percent = row["Distribution" + str(grade)]
+        q_answers = row["Distribution" + str(grade) + "_users"]
+        difference_last = abs(q_percent - last_percentage) * percentage_weight
+        difference_percent = abs(q_percent - percentage) * percentage_weight * qs_answered 
         difference_score = difference_last + difference_percent + difference_score
 
         # compare last question by token sort ratio
@@ -452,26 +512,16 @@ class Recsystem:
         # We arbitrarily fail 75% of the questions
         # This should make it more random as well
         if np.random.randint(0, 4) == 0:
-            q1 = self.nlp(self.last_question)
             q2 = self.nlp(row['question'])
-            word_list_1 = []
             word_list_2 = []
-            for word in q1:
-                if word.pos_ == 'NOUN':
-                    word_list_1.append(word.text)
-
             for word in q2:
                 if word.pos_ == 'NOUN':
                     word_list_2.append(word.text)
 
-            if len(word_list_1) == 0 or len(word_list_2) == 0:
+            if tk_q1 is None or len(word_list_2) == 0:
                 sim = 0
             else:
-                tokenized_q1 = " ".join(sorted(word_list_1))
                 tokenized_q2 = " ".join(sorted(word_list_2))
-
-                tk_q1 = self.nlp(tokenized_q1)
-
                 # TypeError occurs if sentence has no nouns
                 try:
                     sim = tk_q1.similarity(self.nlp(tokenized_q2))
@@ -482,116 +532,124 @@ class Recsystem:
 
         difference_q = 1 - sim
         question_weight = 100
-        difference_score += question_weight * difference_q
+        difference_score += question_weight * (100 * difference_q)
 
         # Compare test type
-        difference_test = 1
-        if self.test_type == row['examName']:
+        difference_test = 100
+        if exam == row['examName']:
             difference_test = 0
         test_weight = 1
         difference_score += difference_test * test_weight
 
-        return difference_score
+        total_weight = test_weight + question_weight + grade_weight + 2 * percentage_weight
+        similarity = 100 - difference_score / float(total_weight)
+
+        assert similarity < 100 and similarity > 0
+
+        # Update similarity
+        conn = sqlite3.connect('recs.db')
+        c = conn.cursor()
+        update = "UPDATE user_similarity set similarity=(?) where username=(?) and questionId=(?)"
+        c.execute(update, (similarity, username, row['questionID']))
+        conn.commit()
+        conn.close()
 
     # 5)) We implement a function to check if an answer is correct
-    def _check_answer(self, answer):
-        if self.df.iloc[[self.index]]['AnswerKey']._values[0] == answer:
-            return True
-        return False
+    def _check_answer(self, answer, question_id):
+        sql = "SELECT AnswerKey from questions where questionID=(?)"
+        conn = sqlite3.connect('recs.db')
+        c = conn.cursor()
+        c.execute(sql, (question_id,))
+        response = c.fetchall()
+        correct = False
+        count = 0
+        for re in response:
+            count += 1
+            answer_key = re[0]
+            if answer.lower().strip() == answer_key.lower().strip():
+                correct = True
+            break
+        
+        assert count == 1
+
+        conn.close()
+        return correct
 
     # 6)) We implement a function to find the minimum dissimilar that the user has not already answered
-    def prep_next_q(self, answer):
+    def prep_next_q(self, answer, username, grade, exam, keywords, question_id):
 
-        self._updates(answer)
+        correct = self._check_answer(answer, question_id)
+        last_percentage = 100
+        if correct:
+            last_percentage = 0 
+        qs_answered, percentage, _, answered_questions, q_id = self.init_user_vars(username, grade, exam, keywords)
+        
+        assert q_id.lower() == question_id.lower()
+        
+        self._updates(correct, qs_answered, percentage, exam, answered_questions,
+            q_id, grade, username)
+        qs_answered, percentage, _, answered_questions, _ = self.init_user_vars(username, grade, exam, keywords)
         logging.info("Finish updates")
 
+        tk_q1 = self._similarity_of_id(q_id)
+
         # Get similarity
-        self.df['similarity'] = self.df.apply(lambda row: self._match_profile(row), axis=1)
-        self.df = self.df.sort_values('similarity')
-        logging.info("Finished similarity")
-
-        # Find question based on similarity
-        found_q = False
-        n = 0
-        while not found_q:
-            if self.df.iloc[[n]]['questionID']._values[0] not in self.answered_questions:
-                found_q = True
-                self.index = n
-            n += 1
-        logging.info("Found Question")
-
-        # Update class and db information
-        self._update_by_index()
-        self._update_sql()
-        logging.info("Saved Next Question")
+        conn = sqlite3.connect('recs.db')
+        df = pd.read_sql('SELECT * FROM questions;', conn)
+        df.apply(lambda row: self._match_profile(row, username, exam, grade, last_percentage, 
+        percentage, qs_answered, tk_q1), axis=1)
+        conn.close()
+        logging.info("Finished Similarity + Updates")
+        return {
+            "correct" : ("correct" if correct else "incorrect")
+        }
 
     # 7)) We update student  / db statistics based on answered question
-    def _updates(self, answer):
-
-        correct = self._check_answer(answer)
+    def _updates(self, correct, qs_answered, percentage, test_type, answered_questions,
+        question_id, grade, username):
 
         # Update percentage
-        qs_right = int(self.percentage * self.qs_answered)
+        qs_right = int(percentage * qs_answered)
         if correct:
             qs_right += 1
 
         # Update qs answered
-        self.qs_answered += 1
-        self.percentage = qs_right / float(self.qs_answered)
+        qs_answered += 1
+        percentage = qs_right / float(qs_answered)
+
+        # Update answered questions
+        answered_questions.append(question_id)
+        assert len(answered_questions) == qs_answered
+        str_questions = "____".join(answered_questions)
+
+        # Update in DB
+        conn = sqlite3.connect('recs.db')
+        c = conn.cursor()
+        user_update = "UPDATE users set answered_questions=(?) , qs_answered=(?) , percentage=(?) WHERE username=(?) and grade=(?)"
+        c.execute(user_update, (str_questions, qs_answered, percentage, username, grade))
+        conn.commit()
+        conn.close()
 
         # Update db number in grade who answered + percentage correct
-        prev_correct = int(self.df.at[self.index, str(self.grade)] * self.df.at[self.index, str(self.grade) + "_users"])
-        if correct:
-            prev_correct += 1
-        self.df.at[self.index, str(self.grade) + "_users"] += 1
-        self.df.at[self.index, str(self.grade)] = prev_correct
-
-    # After picking a new question, we update our class variables accordingly
-    def _update_by_index(self):
-
-        # Update last percentage
-        self.last_percentage = self.df.iloc[[self.index]][str(self.grade)]._values[0]
-
-        # Update last question
-        self.last_question = self.df.iloc[[self.index]]['question']._values[0]
-        self.A = self.df.iloc[[self.index]]['A']._values[0]
-        self.B = self.df.iloc[[self.index]]['B']._values[0]
-        self.C = self.df.iloc[[self.index]]['C']._values[0]
-        self.D = self.df.iloc[[self.index]]['D']._values[0]
-
-        # Update question IDs
-        self.answered_questions.append(self.df.iloc[[self.index]]['questionID']._values[0])
-
-        # Update question grade
-        self.q_grade = self.df.iloc[[self.index]]['schoolGrade']._values[0]
-
-    def send_question(self):
-        return self.last_question, self.A, self.B, self.C, self.D
-
-    def send_user_stats(self):
-        return self.percentage, self.qs_answered
-
-    def send_q_stats(self):
-        return self.last_percentage
-
-    def _update_sql(self):
-        self.conn = sqlite3.connect('recs.db')
-        self.c = self.conn.cursor()
-
-        sql_command = "UPDATE users SET grade="
-        sql_command += str(self.grade)
-        sql_command += ", qs_answered="
-        sql_command += str(self.qs_answered)
-        sql_command += ", percentage="
-        sql_command += str(self.percentage)
-        sql_command += ", answered_questions="
-        sql_command += '"' + '____'.join(self.answered_questions) + '"'
-        sql_command += " WHERE username="
-        sql_command += '"' + self.username + '";'
-
-        self.c.execute(sql_command)
-        self.conn.commit()
-        self.conn.close()
+        conn = sqlite3.connect('recs.db')
+        get_users = "SELECT Distribution" + str(grade) + "_users" +  ", Distribution" + str(grade) +  " from questions WHERE questionID=(?)"
+        c = conn.cursor()
+        c.execute(get_users, (question_id,))
+        response = c.fetchall()
+        for re in response:
+            users = int(re[0])
+            percent = int(re[1])
+            prev_correct = int(users * percent)
+            if correct:
+                prev_correct += 1
+            percent = prev_correct / float(users)
+            
+            sql_update = "UPDATE questions set Distribution" + str(grade) + "_users" + "=(?), Distribution" + str(grade) + "=(?) where questionID=(?)"
+            c = conn.cursor()
+            c.execute(sql_update, (users, percent, question_id))
+        conn.commit()
+        conn.close()
+        return qs_answered, percentage, test_type, answered_questions
 
     # Ends sql connection
     def _end_session(self):
