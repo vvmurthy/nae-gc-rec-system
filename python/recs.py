@@ -109,13 +109,16 @@ class Recsystem:
 
     """
 
+    DB_NAME = "recs.db"
+
     def __init__(self, BASE):
 
         # Define dataset of questions
         self.base = BASE
 
         # Define word tokenizer
-        self.nlp = spacy.load('en_core_web_lg')
+        self.nlp = spacy.load('en_core_web_md', disable=["parser", "ner", "textcat", "entity_ruler",
+            "sentencizer", "merge_noun_chunks", "merge_entities", "merge_subtokens"])
 
         # Define static values of dataset
         self.grade_range = 7  # grades 3 - 9 inclusive
@@ -130,7 +133,7 @@ class Recsystem:
                                'Virginia Standards of Learning - Science', 'AMP']
 
         # Preprocess dataset and read into sql if not done already
-        self.conn = sqlite3.connect('recs.db')
+        self.conn = sqlite3.connect(self.DB_NAME)
         self.c = self.conn.cursor()
         self.c.execute("SELECT count(*) FROM sqlite_master WHERE type='table'")
         tables = self.c.fetchall()[0][0]
@@ -170,7 +173,7 @@ class Recsystem:
                 create_table_sql = "CREATE TABLE IF NOT EXISTS keywords ( \
                                     id integer PRIMARY KEY, \
                                     examName text NOT NULL, \
-                                    questionId integer NOT NULL, \
+                                    questionId text NOT NULL, \
                                     grade integer NOT NULL, question text NOT NULL, keyword text NOT NULL \
                                 );"
                 self.c.execute(create_table_sql)
@@ -185,7 +188,7 @@ class Recsystem:
                 create_table_sql = "CREATE TABLE IF NOT EXISTS user_similarity ( \
                                     id integer PRIMARY KEY, \
                                     username text NOT NULL, \
-                                    questionId integer NOT NULL, \
+                                    questionId text NOT NULL, \
                                     similarity long NOT NULL \
                                 );"
                 self.c.execute(create_table_sql)
@@ -204,7 +207,7 @@ class Recsystem:
         self.conn.close()
     
     def get_question_by_keywords_grade(self, grade, keywords, exam):
-        conn = sqlite3.connect('recs.db')
+        conn = sqlite3.connect(self.DB_NAME)
         questions = []
         question_ids = set()
         sql = "SELECT questionID from keywords where examName=(?) and grade=(?) and keyword=(?)"
@@ -218,7 +221,7 @@ class Recsystem:
                     continue            
                 question_ids.add(question_id)
         conn.close()
-        conn = sqlite3.connect('recs.db')
+        conn = sqlite3.connect(self.DB_NAME)
         
         for question_id in question_ids:
             self.get_question_by_id(question_id, questions, conn)
@@ -260,7 +263,7 @@ class Recsystem:
 
 
     def init_user_vars(self, username, grade, exam, keywords):
-        conn = sqlite3.connect('recs.db')
+        conn = sqlite3.connect(self.DB_NAME)
         c = conn.cursor()
         try:
             user = pd.read_sql('SELECT * FROM users WHERE username=' + '"' + username + '";', conn)
@@ -300,7 +303,7 @@ class Recsystem:
             c.execute(find_all_questions)
             response = c.fetchall()
             for re in response:
-                question_id_query = re[0]
+                question_id_query = str(re[0])
                 similarity = 0.0
                 if question_id_query == question_id:
                     similarity = 90.0
@@ -309,7 +312,7 @@ class Recsystem:
                 conn.commit()
 
         else:
-            find_questions_sql = "SELECT similarity, questionID from user_similarity where username=(?)"
+            find_questions_sql = "SELECT similarity, questionId from user_similarity where username=(?)"
             c.execute(find_questions_sql, (username,))
             response = c.fetchall()
             similarity = 0
@@ -318,7 +321,7 @@ class Recsystem:
                 question_id_query = str(re[1])
                 if similarity_query > similarity and (question_id_query not in answered_questions):
                     question_id = question_id_query
-                    break
+                    similarity = similarity_query
         conn.close()
         return qs_answered, percentage, test_type, answered_questions, question_id
     
@@ -338,12 +341,11 @@ class Recsystem:
                 words.add(word)
 
         for word in words:
-            self.c.execute(sql, (exam, grade, question, word.text, question_id))
+            self.c.execute(sql, (exam, grade, question, word.text, question_id))   
         
-    
     def get_keywords(self, exam, grade):
         sql = "SELECT keyword from keywords where examName=(?) and grade=(?)"
-        self.conn = sqlite3.connect('recs.db')
+        self.conn = sqlite3.connect(self.DB_NAME)
         self.c = self.conn.cursor()
         self.c.execute(sql, (exam, grade))
         response = self.c.fetchall()
@@ -464,16 +466,8 @@ class Recsystem:
 
         return pd.Series(series)
 
-    def _similarity_of_id(self, question_id):
-        conn = sqlite3.connect('recs.db')
-        c = conn.cursor()
-        select = "SELECT question from questions where questionID=(?)"
-        c.execute(select, (question_id,))
-        response = c.fetchall()
-        for re in response:
-            last_question = re[0]
-            break
-        conn.close()
+    def _similarity_of_keywords(self, keywords):
+        last_question = " ".join(keywords)
         
         q1 = self.nlp(last_question)
         word_list_1 = []
@@ -487,7 +481,7 @@ class Recsystem:
         return tk_q1
 
     def _match_profile(self, row, username, exam, grade, last_percentage, 
-        percentage, qs_answered, tk_q1):
+        percentage, qs_answered, question_id, tk_q1):
 
         grade = int(grade)
 
@@ -497,7 +491,7 @@ class Recsystem:
         # Compare grade
         grade_weight = 1
         q_grade = int(row['schoolGrade'])
-        diff = q_grade - grade
+        diff = abs(q_grade - grade)
         difference_score += (100 * (diff) / float(6)) * grade_weight
 
         # Compare percentage
@@ -509,28 +503,23 @@ class Recsystem:
         difference_score = difference_last + difference_percent + difference_score
 
         # compare last question by token sort ratio
-        # For (small amounts of) optimization
-        # We arbitrarily fail 75% of the questions
-        # This should make it more random as well
-        if np.random.randint(0, 4) == 0:
-            q2 = self.nlp(row['question'])
-            word_list_2 = []
-            for word in q2:
-                if word.pos_ == 'NOUN':
-                    word_list_2.append(word.text)
+        question_2 = row["question"]
+        q2 = self.nlp(question_2)
+        word_list_2 = []
+        for word in q2:
+            if word.pos_ == 'NOUN':
+                word_list_2.append(word.text)
 
-            if tk_q1 is None or len(word_list_2) == 0:
-                sim = 0
-            else:
-                tokenized_q2 = " ".join(sorted(word_list_2))
-                # TypeError occurs if sentence has no nouns
-                try:
-                    sim = tk_q1.similarity(self.nlp(tokenized_q2))
-                except TypeError:
-                    sim = 0
-        else:
+        if tk_q1 is None or len(word_list_2) == 0:
             sim = 0
-
+        else:
+            tokenized_q2 = " ".join(sorted(word_list_2))
+            # TypeError occurs if sentence has no nouns
+            try:
+                sim = tk_q1.similarity(self.nlp(tokenized_q2))
+            except TypeError:
+                sim = 0
+        
         difference_q = 1 - sim
         question_weight = 100
         difference_score += question_weight * (100 * difference_q)
@@ -545,20 +534,18 @@ class Recsystem:
         total_weight = test_weight + question_weight + grade_weight + 2 * percentage_weight
         similarity = 100 - difference_score / float(total_weight)
 
-        assert similarity < 100 and similarity >= 0
+        if similarity > 100 or similarity < 0:
+            logging.warn("Invalid similarity: " + str(similarity) + " found")
+            similarity = min(max(0, similarity), 100)
 
         # Update similarity
-        conn = sqlite3.connect('recs.db')
-        c = conn.cursor()
-        update = "UPDATE user_similarity set similarity=(?) where username=(?) and questionId=(?)"
-        c.execute(update, (similarity, username, row['questionID']))
-        conn.commit()
-        conn.close()
+        return pd.Series({"similarity": similarity, "username" : username, 
+            "questionId" : row["questionID"]})
 
     # 5)) We implement a function to check if an answer is correct
     def _check_answer(self, answer, question_id):
         sql = "SELECT AnswerKey from questions where questionID=(?)"
-        conn = sqlite3.connect('recs.db')
+        conn = sqlite3.connect(self.DB_NAME)
         c = conn.cursor()
         c.execute(sql, (question_id,))
         response = c.fetchall()
@@ -592,13 +579,17 @@ class Recsystem:
         qs_answered, percentage, _, answered_questions, _ = self.init_user_vars(username, grade, exam, keywords)
         logging.info("Finish updates")
 
-        tk_q1 = self._similarity_of_id(q_id)
+        tk_q1 = self._similarity_of_keywords(keywords)
 
         # Get similarity
-        conn = sqlite3.connect('recs.db')
+        conn = sqlite3.connect(self.DB_NAME)
         df = pd.read_sql('SELECT * FROM questions;', conn)
-        df.apply(lambda row: self._match_profile(row, username, exam, grade, last_percentage, 
-        percentage, qs_answered, tk_q1), axis=1)
+        similarities = df.apply(lambda row: self._match_profile(row, username, exam, grade, last_percentage, 
+        percentage, qs_answered, q_id, tk_q1), axis=1)
+        old_similar = pd.read_sql('SELECT questionId, similarity, username FROM user_similarity;', conn)
+        old_similar = similarities.combine_first(old_similar)
+        old_similar.to_sql("user_similarity", conn, if_exists='replace')
+        conn.commit()
         conn.close()
         logging.info("Finished Similarity + Updates")
         return {
@@ -624,7 +615,7 @@ class Recsystem:
         str_questions = "____".join(answered_questions)
 
         # Update in DB
-        conn = sqlite3.connect('recs.db')
+        conn = sqlite3.connect(self.DB_NAME)
         c = conn.cursor()
         user_update = "UPDATE users set answered_questions=(?) , qs_answered=(?) , percentage=(?) WHERE username=(?) and grade=(?)"
         c.execute(user_update, (str_questions, qs_answered, percentage, username, grade))
@@ -632,7 +623,7 @@ class Recsystem:
         conn.close()
 
         # Update db number in grade who answered + percentage correct
-        conn = sqlite3.connect('recs.db')
+        conn = sqlite3.connect(self.DB_NAME)
         get_users = "SELECT Distribution" + str(grade) + "_users" +  ", Distribution" + str(grade) +  " from questions WHERE questionID=(?)"
         c = conn.cursor()
         c.execute(get_users, (question_id,))

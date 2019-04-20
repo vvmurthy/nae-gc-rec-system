@@ -69,7 +69,7 @@ def get_question():
         username, grade, exam, keywords
     )
     questions = []
-    conn = sqlite3.connect('recs.db')
+    conn = sqlite3.connect(rc.DB_NAME)
     rc.get_question_by_id(question_id, questions, conn)
     conn.close()
     return json.dumps({
