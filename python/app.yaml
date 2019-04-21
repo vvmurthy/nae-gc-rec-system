@@ -2,6 +2,7 @@ runtime: custom
 env: flex
 
 liveness_check:
+   path: '/api/tests'
    check_interval_sec: 120
    timeout_sec: 40
    failure_threshold: 5
@@ -11,6 +12,7 @@ liveness_check:
 entrypoint: python app.py
 
 readiness_check:
+  path: '/api/tests'
   check_interval_sec: 120
   timeout_sec: 40
   failure_threshold: 5
@@ -19,7 +21,8 @@ readiness_check:
 
 manual_scaling:
   instances: 1
+
 resources:
-  cpu: 1
-  memory_gb: 0.5
+  cpu: 2
+  memory_gb: 6
   disk_size_gb: 10

@@ -21,7 +21,7 @@ At terminal set up google cloud SDK, Docker
 $ cd python
 $ docker build -t nae-gc -< Dockerfile
 $ gcloud auth configure-docker
-$ docker tag nae-gc gcr.io/[PROJECT-ID]/nae-gc
-$ docker push gcr.io/[PROJECT-ID]/nae-gc
-$ gcloud app deploy nae-gc gcr.io/[PROJECT-ID]/nae-gc
+$ docker tag nae-gc gcr.io/get-schooled-7e158/nae-gc
+$ docker push gcr.io/get-schooled-7e158/nae-gc
+$ gcloud app deploy nae-gc gcr.io/get-schooled-7e158/nae-gc
 ```
