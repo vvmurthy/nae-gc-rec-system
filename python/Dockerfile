@@ -18,14 +18,13 @@ RUN apt-get update && \
 
 RUN apt-get -y install software-properties-common
 
-RUN git clone https://github.com/vvmurthy/nae-gc-rec-system
-
-WORKDIR /nae-gc-re-system/python
+RUN ls -a
+RUN git clone https://github.com/vvmurthy/nae-gc-rec-system.git nae/
+WORKDIR /nae
+RUN cd /nae
+WORKDIR /nae/python
+RUN cd /nae/python
 RUN . /opt/conda/etc/profile.d/conda.sh
-
-RUN conda install spacy==1.9.0
-RUN pip install -r /nae-gc-re-system/python/requirements.txt
-RUN python -m spacy download en_core_web_md
 
 RUN apt-get update && \
 	DEBIAN_FRONTEND=noninteractive apt-get -yq install sqlite3 && \
@@ -33,4 +32,9 @@ RUN apt-get update && \
 
 EXPOSE 5000
 
-CMD ["/nae-gc-re-system/python/run.sh"]
+ENV NAE_HOME /nae/python
+RUN pip install -r requirements.txt
+RUN python -m spacy download en_core_web_md
+ENV PATH $NAE_HOME:$PATH
+RUN chmod +x /nae/python/run.sh
+CMD /nae/python/run.sh
