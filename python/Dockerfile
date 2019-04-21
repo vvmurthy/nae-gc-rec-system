@@ -87,6 +87,7 @@ RUN apt-get update && \
 
 ENV NAE_HOME /nae/python
 RUN pip install Cython==0.28
+RUN pip install spacy==1.9.0
 
 RUN git clone https://github.com/vvmurthy/nae-gc-rec-system.git nae/
 WORKDIR /nae
