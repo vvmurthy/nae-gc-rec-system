@@ -3,6 +3,9 @@ import json
 from flask import Flask, request, send_file
 import sqlite3
 
+import logging
+logging.basicConfig(level=logging.INFO)
+
 from recs import Recsystem
 
 DIR = os.path.abspath('..')
@@ -72,6 +75,7 @@ def get_question():
     conn = sqlite3.connect(rc.DB_NAME)
     rc.get_question_by_id(question_id, questions, conn)
     conn.close()
+    logging.info(questions)
     return json.dumps({
         'question': questions,
         "qs_answered" : qs_answered,
@@ -89,9 +93,9 @@ def post_answer():
     grade = dataDict["grade"]
     answer = dataDict["answer"]
     question_id = dataDict["question_id"]
-
+    logging.info("Received Question ID: " + question_id)
     response = rc.prep_next_q(answer, username, grade, exam, keywords, question_id)
-
+    
     return json.dumps(response)
 
 # TODO

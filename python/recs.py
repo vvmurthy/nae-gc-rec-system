@@ -230,7 +230,7 @@ class Recsystem:
     
     def get_question_by_id(self, question_id, questions, conn):
         c = conn.cursor()
-        sql = "SELECT questionID, originalQuestionID, AnswerKey, examName, year, question, A, B, C, D from questions where questionID=(?)"
+        sql = "SELECT questionID, originalQuestionID, AnswerKey, examName, year, question, A, B, C, D, SchoolGrade from questions where questionID=(?)"
         c.execute(sql, (question_id,))
         response = c.fetchall()
         for re in response:
@@ -246,6 +246,7 @@ class Recsystem:
             b = re[7]
             c = re[8]
             d = re[9]
+            grade = int(re[10])
 
             question_dict = {
                 "originalID" : original_id,
@@ -257,7 +258,8 @@ class Recsystem:
                 "C" : c,
                 "D" : d,
                 "question" : question,
-                "year" : year
+                "year" : year,
+                "grade" : grade
             }
             questions.append(question_dict)
 
@@ -565,7 +567,6 @@ class Recsystem:
 
     # 6)) We implement a function to find the minimum dissimilar that the user has not already answered
     def prep_next_q(self, answer, username, grade, exam, keywords, question_id):
-
         correct = self._check_answer(answer, question_id)
         last_percentage = 100
         if correct:
