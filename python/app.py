@@ -16,11 +16,6 @@ rc = Recsystem(DIR)
 
 app = Flask(__name__)
 
-@app.route('/')
-def show_index():
-    return send_file(WWW_BASE + '/index.html')
-
-
 @app.route('/<path:path>')
 def show_file(path):
     return send_file(WWW_BASE + '/' + path)

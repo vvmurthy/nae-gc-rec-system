@@ -178,6 +178,7 @@ class Recsystem:
                                 );"
                 self.c.execute(create_table_sql)
                 self.df.apply(lambda row: self._init_keywords(row), axis=1)
+                self.conn.commit()
             except Exception as e:
                 logging.warn(e)
                 logging.warn("Could not add keywords table to sql")
@@ -199,6 +200,9 @@ class Recsystem:
 
         # Clear the dataframe for future operations
         self.df = None
+        self.c.execute("SELECT count(*) FROM sqlite_master WHERE type='table'")
+        tables = self.c.fetchall()[0][0]
+        logging.info("Number of tables after creation: " + str(tables))
 
         # Define temporary variable index- which question currently being answered
         # index is initially a random question that the user has not answered
@@ -343,7 +347,8 @@ class Recsystem:
                 words.add(word)
 
         for word in words:
-            self.c.execute(sql, (exam, grade, question, word.text, question_id))   
+            self.c.execute(sql, (exam, grade, question, word.text, question_id))  
+        self.conn.commit() 
         
     def get_keywords(self, exam, grade):
         sql = "SELECT keyword from keywords where examName=(?) and grade=(?)"
