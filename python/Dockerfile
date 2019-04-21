@@ -2,9 +2,9 @@ FROM python:3.6-jessie
 
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
 
-RUN apt-get update --fix-missing && apt-get install -y  \
-    libglib2.0-0 libxext6 libsm6 libxrender1 \
-    git
+#RUN apt-get update --fix-missing && apt-get install -y  \
+#    libglib2.0-0 libxext6 libsm6 libxrender1 \
+#    git
 
 RUN apt-get update && apt-get install -y \
 		bc \
@@ -17,15 +17,7 @@ RUN apt-get update && apt-get install -y \
 		libopenblas-dev \
 		liblapack-dev \
 		libssl-dev \
-		libzmq3-dev \
-		pkg-config \
 		software-properties-common \
-		libjasper-dev \
-		libgdal-dev \
-		libdc1394-22-dev \
-		libswscale-dev \
-		libtheora-dev \
-		libvorbis-dev \
 		yasm \
 		libeigen3-dev \
 		&& \
