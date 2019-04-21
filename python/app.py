@@ -16,9 +16,9 @@ rc = Recsystem(DIR)
 
 app = Flask(__name__)
 
-@app.route('/<path:path>')
-def show_file(path):
-    return send_file(WWW_BASE + '/' + path)
+@app.route('/', methods=["GET"])
+def get():
+    return json.dumps({})
 
 @app.route('/api/tests', methods=["GET"])
 def get_tests():

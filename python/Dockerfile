@@ -2,32 +2,22 @@ FROM python:3.6-jessie
 
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
 
-#RUN apt-get update --fix-missing && apt-get install -y  \
-#    libglib2.0-0 libxext6 libsm6 libxrender1 \
-#    git
-
 RUN apt-get update && apt-get install -y \
 		bc \
 		build-essential \
 		cmake \
 		g++ \
-		gfortran \
 		git \
 		liblcms2-dev \
 		libopenblas-dev \
-		liblapack-dev \
 		libssl-dev \
 		software-properties-common \
-		yasm \
 		libeigen3-dev \
+        sqlite3 \
 		&& \
 	apt-get clean && \
 	apt-get autoremove && \
 	rm -rf /var/lib/apt/lists/*  
-
-RUN apt-get update && \
-	DEBIAN_FRONTEND=noninteractive apt-get -yq install sqlite3 && \
-	rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 ENV NAE_HOME /nae/python
 RUN pip install spacy==1.9.0
@@ -42,5 +32,5 @@ RUN pip install -r requirements.txt
 ENV PATH $NAE_HOME:$PATH
 RUN chmod +x /nae/python/run.sh
 
-EXPOSE 5000
+EXPOSE 8080 
 CMD /nae/python/run.sh

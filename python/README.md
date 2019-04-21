@@ -13,3 +13,15 @@ python -m spacy download en_core_web_md
 pip install -r requirements.txt
 python app.py
 ```
+
+3) Deploying
+At terminal set up google cloud SDK, Docker
+```
+// Here project ID is get-schooled-7e158
+$ cd python
+$ docker build -t nae-gc -< Dockerfile
+$ gcloud auth configure-docker
+$ docker tag nae-gc gcr.io/[PROJECT-ID]/nae-gc
+$ docker push gcr.io/[PROJECT-ID]/nae-gc
+$ gcloud app deploy nae-gc gcr.io/[PROJECT-ID]/nae-gc
+```
