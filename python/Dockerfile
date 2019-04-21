@@ -5,13 +5,7 @@ ENV PATH /opt/conda/bin:$PATH
 
 RUN apt-get update --fix-missing && apt-get install -y wget bzip2 ca-certificates \
     libglib2.0-0 libxext6 libsm6 libxrender1 \
-    git mercurial subversion
-
-#RUN wget --quiet https://repo.anaconda.com/archive/Anaconda3-2018.12-Linux-x86_64.sh -O ~/anaconda.sh && \
-#    /bin/bash ~/anaconda.sh -b -p /opt/conda && \
-#    rm ~/anaconda.sh && \
-#    ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh
-#RUN conda install python=3.6
+    git
 
 RUN apt-get update && apt-get install -y \
 		bc \
@@ -72,9 +66,6 @@ RUN apt-get update && apt-get install -y \
 		python3-dev \
 		python3-tk \
 		python3-numpy \
-		ant \
-		default-jdk \
-		doxygen \
 		&& \
 	apt-get clean && \
 	apt-get autoremove && \
